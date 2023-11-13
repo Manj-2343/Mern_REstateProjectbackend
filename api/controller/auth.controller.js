@@ -1,0 +1,91 @@
+import { errorHandler } from "../Utils.js/Error.js";
+import User from "../models/user.model.js";
+import bcryptJs from "bcryptjs";
+import Jwt from "jsonwebtoken";
+
+export const signUp = async (req, res, next) => {
+  try {
+    const { userName, email, password } = req.body;
+
+    if (!password) {
+      // Handle the case where 'password' is missing
+      return res.status(400).json({ message: "Password is required" });
+    }
+
+    const hashPassword = bcryptJs.hashSync(password, 10);
+    const newUser = new User({ userName, email, password: hashPassword });
+    await newUser.save();
+    res.status(201).json("User Created Successfully!!!");
+  } catch (error) {
+    next(error); // By the next function, we get the proper error message
+  }
+};
+
+export const signIn = async (req, res, next) => {
+  const { email, password } = req.body;
+  try {
+    const validUser = await User.findOne({ email });
+    if (!validUser) {
+      return next(errorHandler(404, "User Not Found!!!"));
+    }
+    const validPassword = bcryptJs.compareSync(password, validUser.password);
+    if (!validPassword) return next(errorHandler(401, "Wrong Credentials!!!"));
+    const token = Jwt.sign({ id: validUser._id }, process.env.JWT_SECRET);
+    const {password:pass,...rest}=validUser._doc;
+    res
+      .cookie("access_token", token, {
+        httpOnly: true,
+        // expires: new Date(Date.now() * 24 * 60 * 60 * 1000),
+      })
+      .status(200)
+      .json(rest);
+  } catch (error) {
+    next(error); // By the next function, we get the proper error message
+  }
+};
+export const google = async (req, res, next) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
+    if (user) {
+      const token = Jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+      const { password: pass, ...rest } = user._doc;
+      console.log('Before console.log statement');
+console.log('Response Data:', rest);
+console.log('After console.log statement');
+      res
+        .cookie('access_token', token, { httpOnly: true })
+        .status(200)
+        .json(rest);
+    } else {
+      const generatedPassword =
+        Math.random().toString(36).slice(-8) +
+        Math.random().toString(36).slice(-8);
+      const hashedPassword = bcryptJs.hashSync(generatedPassword, 10);
+      const newUser = new User({
+        username:
+          req.body.name.split(' ').join('').toLowerCase() +
+          Math.random().toString(36).slice(-4),
+        email: req.body.email,
+        password: hashedPassword,
+        avatar: req.body.photo,
+      });
+      await newUser.save();
+      const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET);
+      const { password: pass, ...rest } = newUser._doc;
+      res
+        .cookie('access_token', token, { httpOnly: true })
+        .status(200)
+        .json(rest);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+export const signOut = async (req, res, next) => {
+  try {
+    res.clearCookie('access_token');
+    res.status(200).json('User has been logged out!');
+  } catch (error) {
+    next(error);
+  }
+};
